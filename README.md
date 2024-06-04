@@ -1,8 +1,8 @@
-# jitsi
+# jitsi-meet
 
 
 
-Jitsi Installation:
+### Jitsi Installation:
 Os : Ubuntu 22.04
 
 ### Step 1 — Setting the System Hostname
@@ -289,6 +289,291 @@ This action will open the Invite more people dialog. Copy the unique URL of the 
 
 
 You can now paste the meeting URL into an email or chat program to send to anyone you want to attend the meeting. They will not need a username and password to access the meeting after you have created it.
+
+
+
+
+### Jibri setup:
+
+#### Jibri installation steps :
+
+Install the necessary packages from Debian 10’s default repositories.
+
+```
+sudo apt install -y software-properties-common ffmpeg curl alsa-utils icewm xdotool unzip xserver-xorg-video-dummy ruby-hocon maven gnupg2 make nginx-full apt-transport-https ca-certificates
+sudo apt -y install linux-virtual linux-cloud-tools-virtual linux-generic linux-headers-generic
+```
+If you are using any cloud verify for the linux type. Soo if it is azure 
+```sudo apt -y purge linux*azure```
+```
+sudo reboot
+```
+after reboot verify the vm type
+
+```
+uname -a #it should be generic
+```
+```
+sudo apt update && sudo apt upgrade -y  && sudo apt purge && sudo apt autoremove && sudo apt autoclean
+```
+
+Enable the ALSA loopback module
+```
+echo “snd_aloop” >>/etc/modules
+modprobe snd_aloop
+```
+
+If u get permission issue try using super user "sudo su" 
+
+Download and install Google Chrome :
+
+```
+sudo su
+sudo curl -o - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add
+sudo echo deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main > /etc/apt/sources.list.d/google-chrome.list
+sudo apt update
+sudo apt install google-chrome-stable
+```
+
+Install latest ChromeDriver :
+https://googlechromelabs.github.io/chrome-for-testing/
+
+execute below commands as super user if you get any issue exit the super user
+
+ex:
+```
+wget -N https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/120.0.6099.109/linux64/chromedriver-linux64.zip
+```
+```
+unzip ~/chromedriver-linux64.zip -d ~/
+rm ~/chromedriver-linux64.zip
+sudo mv -f chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
+sudo chmod 0755 /usr/local/bin/chromedriver
+```
+
+Disable notifications regarding scripted control in Chrome :
+
+```
+mkdir -p /etc/opt/chrome/policies/managed
+echo '{ "CommandLineFlagSecurityWarningsEnablead": false }' >>/etc/opt/chrome/policies/managed/managed_policies.json
+```
+Install Jibri:
+From here exit super user
+
+```
+sudo apt-get install jibri
+```
+
+Include Jibri’s user account in the required groups :
+
+```
+usermod -aG adm,audio,video,plugdev jibri
+```
+
+Set up Prosody configuration :
+
+```sudo nano /etc/prosody/prosody.cfg.lua```
+
+Add below lines at the end of the page
+
+```
+Component "internal.auth.yourdoimain.com" "muc"
+modules_enabled = {
+"ping";
+}
+storage = "internal"
+muc_room_cache_size = 1000
+
+
+VirtualHost "recorder.yourdomian.com"
+modules_enabled = {
+"ping";
+}
+authentication = "internal_plain"
+```
+
+here give your domain instead ```yourdoimain.com```
+
+```
+sudo prosodyctl check config
+```
+
+If you get any errors comment :
+
+```sudo nano /etc/prosody/conf.d/yourdomain.com.cfg.lua```
+
+```comment (cross_domain_bosh)```
+
+Create two new Prosody user accounts for Jibri—one for control purposes and another for recording purposes.
+
+```
+sudo prosodyctl register jibri auth.yourdomain.com <password>
+sudo prosodyctl register recorder recorder.yourdomain.com <password>
+```
+
+Modify Jicofo configuration :
+
+```sudo nano /etc/jitsi/jicofo/sip-communicator.properties```
+
+Add below 2 lines in above location
+
+```
+org.jitsi.jicofo.jibri.BREWERY =JibriBrewery@internal.auth.yourdomain.com
+org.jitsi.jicofo.jibri.PENDING_TIMEOUT=90
+```
+
+
+Update configuration file for recording :
+
+```sudo nano /etc/jitsi/meet/yourdomain.com-config.js```
+
+In above location uncomment the recording and add hiddenDomain
+![jibri](https://github.com/5g-ucl-idrbt/jitsi/assets/101712802/56d76880-f4b3-4be8-9e5d-ac106fa64de0)
+
+Add hiddenDomain :
+
+![jibri1](https://github.com/5g-ucl-idrbt/jitsi/assets/101712802/f9c2bb68-17d5-45d2-8112-d0e2f4338547)
+
+
+
+Create a directory for storing recordings and adjust its permissions accordingly :
+
+```
+cd /opt
+mkdir recordings
+sudo chown jibri:jibri recordings
+```
+
+Customize Jibri settings by configuring the following options :
+
+```sudo nano /etc/jitsi/jibri/jibri.conf```
+
+In above locatiion add below lines
+
+```
+jibri {
+  id = "Unique identifier"
+  single-use-mode = false
+  api {
+    http {
+      external-api-port = 2222
+      internal-api-port = 3333
+    }
+    xmpp {
+      environments = [
+          {
+                name = "prod environment"
+                xmpp-server-hosts = ["yourdomain.com"]
+                xmpp-domain = "yourdomain.com"
+
+                control-muc {
+                    domain = "internal.auth.yourdomain.com"
+                    room-name = "JibriBrewery"
+                    nickname = "jibri-zcsdfsfsfsf"
+                }
+
+                control-login {
+                    domain = "auth.yourdomain.com"
+                    username = "jibri"
+                    password = <password>
+                }
+
+                call-login {
+                    domain = "recorder.yourdomain.com"
+                    username = "recorder"
+                    password = <password>
+                }
+
+                strip-from-room-domain = "conference."
+                usage-timeout = 0
+                trust-all-xmpp-certs = true
+            }]
+    }
+  }
+  recording {
+    //"/opt/recordings"
+    recordings-directory = <recording_directory> 
+    finalize-script = ""
+  }
+  streaming {
+    // A list of regex patterns for allowed RTMP URLs.  The RTMP URL used
+    // when starting a stream must match at least one of the patterns in
+    // this list.
+    rtmp-allow-list = [
+      // By default, all services are allowed
+      ".*"
+    ]
+  }
+  chrome {
+    // The flags which will be passed to chromium when launching
+    flags = [
+      "--use-fake-ui-for-media-stream",
+      "--start-maximized",
+      "--kiosk",
+      "--enabled",
+      "--disable-infobars",
+      "--autoplay-policy=no-user-gesture-required"
+    ]
+  }
+  stats {
+    enable-stats-d = true
+  }
+  webhook {
+    // A list of subscribers interested in receiving webhook events
+    subscribers = []
+  }
+
+  call-status-checks {
+    // If all clients have their audio and video muted and if Jibri does not
+    // detect any data stream (audio or video) coming in, it will stop
+    // recording after NO_MEDIA_TIMEOUT expires.
+    no-media-timeout = 30 seconds
+
+    // If all clients have their audio and video muted, Jibri consideres this
+    // as an empty call and stops the recording after ALL_MUTED_TIMEOUT expires.
+    all-muted-timeout = 10 minutes
+
+    // When detecting if a call is empty, Jibri takes into consideration for how
+    // long the call has been empty already. If it has been empty for more than
+    // DEFAULT_CALL_EMPTY_TIMEOUT, it will consider it empty and stop the recording.
+    default-call-empty-timeout = 30 seconds
+  }
+}
+```
+
+chnages are in above file yourdomain.com and password like "password"
+
+
+
+Reboot all services, activate, and initiate Jibri :
+
+
+```
+sudo systemctl restart prosody
+sudo systemctl restart jicofo
+sudo systemctl restart jitsi-videobridge2
+sudo systemctl enable --now jibri
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
